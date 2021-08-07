@@ -2,6 +2,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <algorithm>
 
 #include "alglib/stdafx.h"
 #include "alglib/alglibmisc.h"
@@ -71,7 +72,7 @@ void printVector(std::vector<T> vec, std::ostream& os = std::cout) {
 }
 
 
-alglib::kdtree* buildKdTree(std::vector<double> flatData) {
+alglib::kdtree* buildKdTree(std::vector<double> &flatData) {
 
     const double* dataAsArr = &flatData[0];
     alglib::real_2d_array arr;
@@ -91,8 +92,6 @@ alglib::real_2d_array nearestNeighbourAgRaw(alglib::real_1d_array x, alglib::kdt
     }
     alglib::real_2d_array results = "[[]]";
     alglib::kdtreequeryresultsx(kdt, results);
-    // std::cout << results.tostring(1) << std::endl;
-    // std::cout << results[1][0] << " " << results[1][1] << std::endl;
     return results;
 }
 
@@ -125,13 +124,44 @@ double nearestDistance(std::vector<double> point, alglib::kdtree &kdt) {
     return nearestDistance(pointAg, kdt);
 }
 
+std::vector<double> allDistances(std::vector<double>& flatData) {
+
+    auto *kdt = buildKdTree(flatData);
+
+    std::vector<double> distances(flatData.size()/3);
+    for (size_t i = 0; i < flatData.size(); i += 3) {
+        std::vector<double> point(2);
+        point[0] = flatData[i];
+        point[1] = flatData[i+1];
+        double distance = nearestDistance(point, *kdt);
+        distances[i/3] = distance;
+    }
+
+    return distances;
+}
+
+//find index of smallest element
+template<typename T>
+size_t argMin(std::vector<T> vec) {
+    auto minit = std::min_element(vec.begin(), vec.end());
+    return std::distance(vec.begin(), minit);
+}
+
+//find index of biggest element
+template<typename T>
+size_t argMax(std::vector<T> vec) {
+    auto maxit = std::max_element(vec.begin(), vec.end());
+    return std::distance(vec.begin(), maxit);
+}
+
 int main() {
     std::string line;
     std::vector<double> flatData = readPointsFlat();
     // printVector(flatData);
-    auto *kdt = buildKdTree(flatData);
-    nearestNeighbourAgRaw("[1312573, 8418602]", *kdt);
-    nearestDistance("[1312573, 8418602]", *kdt);
-    
+
+    std::vector<double> distances = allDistances(flatData);
+    size_t iMinDist = argMax<double>(distances);
+    std::cout << "place" << flatData[iMinDist*3 + 2] << std::endl;
+
     return 0;
 }
