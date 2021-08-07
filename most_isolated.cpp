@@ -73,28 +73,56 @@ void printVector(std::vector<T> vec, std::ostream& os = std::cout) {
 
 alglib::kdtree* buildKdTree(std::vector<double> flatData) {
 
-    std::cout<<"here" <<std::endl;
     const double* dataAsArr = &flatData[0];
     alglib::real_2d_array arr;
     arr.setcontent(flatData.size() / 3, 3, dataAsArr);
-    std::cout<<"here2" <<std::endl;
 
     alglib::ae_int_t nx = 2, ny = 1, normtype = 2; // normtype 2 is euclidian 
     // TODO use smart pointers here
     alglib::kdtree *kdt = new alglib::kdtree;
     alglib::kdtreebuild(arr, nx, ny, normtype, *kdt);
-    std::cout<<"here5" <<std::endl;
     return kdt;
 }
 
-void nearestNeighbour(alglib::real_1d_array x, alglib::kdtree& kdt){
+alglib::real_2d_array nearestNeighbourAgRaw(alglib::real_1d_array x, alglib::kdtree& kdt){
     alglib::ae_int_t numResults = alglib::kdtreequeryknn(kdt, x, 2);
     if (numResults != 2) {
         throw std::runtime_error("alglib found multiple nearest neighbours");
     }
     alglib::real_2d_array results = "[[]]";
     alglib::kdtreequeryresultsx(kdt, results);
-    std::cout << results.tostring(1) << std::endl;
+    // std::cout << results.tostring(1) << std::endl;
+    // std::cout << results[1][0] << " " << results[1][1] << std::endl;
+    return results;
+}
+
+std::vector<double> nearestNeighbourCpp(std::vector<double> point, alglib::kdtree& kdt){
+    alglib::real_1d_array pointAg;
+    pointAg.setcontent(2, &point[0]);
+
+    auto resultsRaw = nearestNeighbourAgRaw(pointAg, kdt);
+    std::vector<double> resultCpp(2);
+    resultCpp[0] = resultsRaw[1][0];
+    resultCpp[1] = resultsRaw[1][1];
+
+    return resultCpp;
+}
+
+double nearestDistance(alglib::real_1d_array x, alglib::kdtree& kdt){
+    
+    alglib::ae_int_t numResults = alglib::kdtreequeryknn(kdt, x, 2);
+    if (numResults != 2) {
+        throw std::runtime_error("alglib found multiple nearest neighbours");
+    }
+    alglib::real_1d_array results = "[]";
+    alglib::kdtreequeryresultsdistances(kdt, results);
+    return results[1];
+}
+
+double nearestDistance(std::vector<double> point, alglib::kdtree &kdt) {
+    alglib::real_1d_array pointAg;
+    pointAg.setcontent(2, &point[0]);
+    return nearestDistance(pointAg, kdt);
 }
 
 int main() {
@@ -102,7 +130,8 @@ int main() {
     std::vector<double> flatData = readPointsFlat();
     // printVector(flatData);
     auto *kdt = buildKdTree(flatData);
-    nearestNeighbour("[1312573, 8418602]", *kdt);
+    nearestNeighbourAgRaw("[1312573, 8418602]", *kdt);
+    nearestDistance("[1312573, 8418602]", *kdt);
     
     return 0;
 }
