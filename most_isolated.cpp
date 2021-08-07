@@ -3,13 +3,16 @@
 #include <sstream>
 #include <vector>
 
+#include "alglib/stdafx.h"
+#include "alglib/alglibmisc.h"
+
 
 // in our case, all place names start with the word place followed by an int
 // therefore ignoring the "place" word and only using the ints for a simpler dataset
-int getPlaceNameInt(std::string placeName) {
+long getPlaceNameInt(std::string placeName) {
     placeName = placeName.substr(5); // 5 to end
     std::stringstream nameS(placeName);
-    int placeInt = -1;
+    long placeInt = -1;
     if (!(nameS >> placeInt)){
         throw std::runtime_error("unexpected place name");
     }
@@ -17,11 +20,11 @@ int getPlaceNameInt(std::string placeName) {
 }
 
 // returns line info in a vector with [0] = x, [1] = y, [2] = placeNameInt
-std::vector<int> parseLine(std::string line) {
+std::vector<long> parseLine(std::string line) {
     std::stringstream lineS(line);
 
     std::string name; 
-    int x = 0, y = 0;
+    long x = 0, y = 0;
     if (!(lineS >> name)){
         throw std::runtime_error("error reading place name");
     }        
@@ -36,24 +39,24 @@ std::vector<int> parseLine(std::string line) {
         throw std::runtime_error(msg + name);
     }
     
-    int placeInt = getPlaceNameInt(name);
-    std::vector<int> outVec(3);
+    long placeInt = getPlaceNameInt(name);
+    std::vector<long> outVec(3);
     outVec[0] = x;
     outVec[1] = y;
     outVec[2] = placeInt;
     return outVec;
 }
 
-std::vector<int> readPointsFlat(std::istream& is = std::cin) {
+std::vector<long> readPointsFlat(std::istream& is = std::cin) {
     std::string line;
-    std::vector<int> flatData;
+    std::vector<long> flatData;
     while (getline(is, line)) {
 
-        std::vector<int> lineInfo3 = parseLine(line);
+        std::vector<long> lineInfo3 = parseLine(line);
 
         // add input data to a flat vector
         // could maybe do some memory alloc optimisation but not needed.
-        for (const int& lineInfo1 : lineInfo3) {
+        for (const auto& lineInfo1 : lineInfo3) {
             flatData.push_back(lineInfo1);
         }
     }
@@ -63,13 +66,20 @@ std::vector<int> readPointsFlat(std::istream& is = std::cin) {
 template<typename T>
 void printVector(std::vector<T> vec, std::ostream& os = std::cout) {
     for (const T& item : vec) {
-        std::cout << item << std::endl;
+        os << item << std::endl;
     }
+}
+
+
+void buildKdTree(std::vector<long> flatData) {
+    const long* dataAsArr = &flatData[0];
+    alglib::integer_2d_array arr;
+    arr.setcontent(flatData.size() / 3, 3, dataAsArr);
 }
 
 int main() {
     std::string line;
-    std::vector<int> flatData = readPointsFlat();
+    std::vector<long> flatData = readPointsFlat();
     printVector(flatData);
     
     return 0;

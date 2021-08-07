@@ -1,3 +1,6 @@
 /alglib
 a.out
 most_isolated
+*.o
+/obj
+
