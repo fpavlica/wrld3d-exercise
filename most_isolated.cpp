@@ -8,7 +8,7 @@
 #include "alglib/alglibmisc.h"
 
 
-// in our case, all place names start with the word place followed by an int
+// with the given data, all place names start with the word place followed by an int
 // therefore ignoring the "place" word and only using the ints for a simpler dataset
 long getPlaceNameInt(std::string placeName) {
     placeName = placeName.substr(5); // 5 to end
@@ -154,14 +154,21 @@ size_t argMax(std::vector<T> vec) {
     return std::distance(vec.begin(), maxit);
 }
 
+std::string findMostIsolated(std::vector<double> flatData) {
+    std::vector<double> distances = allDistances(flatData);
+    size_t iMinDist = argMax<double>(distances);
+    //probs instead have an array of names rather than this hack
+    std::stringstream conv;
+    conv << "place" << static_cast<long>(flatData[iMinDist*3 + 2]); //casting to long to prevent the case of exp notation
+    return conv.str();
+}
+
 int main() {
     std::string line;
     std::vector<double> flatData = readPointsFlat();
     // printVector(flatData);
 
-    std::vector<double> distances = allDistances(flatData);
-    size_t iMinDist = argMax<double>(distances);
-    std::cout << "place" << flatData[iMinDist*3 + 2] << std::endl;
-
+    std::string mostIsoPlace = findMostIsolated(flatData);
+    std::cout << mostIsoPlace << std::endl;
     return 0;
 }
