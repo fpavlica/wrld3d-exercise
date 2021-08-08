@@ -2,30 +2,22 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <tuple>
 #include <algorithm>
 
-#include "alglib/stdafx.h"
 #include "alglib/alglibmisc.h"
 
+#include "most_isolated.h"
 
-// with the given data, all place names start with the word place followed by an int
-// therefore ignoring the "place" word and only using the ints for a simpler dataset
-long getPlaceNameInt(std::string placeName) {
-    placeName = placeName.substr(5); // 5 to end
-    std::stringstream nameS(placeName);
-    double placeInt = 0;
-    if (!(nameS >> placeInt)){
-        throw std::runtime_error("unexpected place name");
-    }
-    return placeInt;
-}
 
-// returns line info in a vector with [0] = x, [1] = y, [2] = placeNameInt
-std::vector<double> parseLine(std::string line) {
+// returns line info in a tuple with [0] = x, [1] = y, [2] = placeNameInt
+std::tuple<double, double, std::string> MostIsolatedFinder::parseLine(std::string line) {
     std::stringstream lineS(line);
 
     std::string name; 
     double x = 0, y = 0;
+    
+    //maybe would've been better to just do a "error parsing file" message instad
     if (!(lineS >> name)){
         throw std::runtime_error("error reading place name");
     }        
@@ -40,30 +32,26 @@ std::vector<double> parseLine(std::string line) {
         throw std::runtime_error(msg + name);
     }
     
-    double placeInt = getPlaceNameInt(name);
-    std::vector<double> outVec(3);
-    outVec[0] = x;
-    outVec[1] = y;
-    outVec[2] = placeInt;
-    return outVec;
+    return make_tuple(x,y, name);
 }
 
-std::vector<double> readPointsFlat(std::istream& is = std::cin) {
+// reads all input and parses it into a list of place names and a falttened list of coordinates
+void MostIsolatedFinder::readAllInput(std::istream &is) {
     std::string line;
-    std::vector<double> flatData;
+    double i = 0; // double because that's what it is in the vector
     while (getline(is, line)) {
 
-        std::vector<double> lineInfo3 = parseLine(line);
+        auto [x, y, name] = parseLine(line);
+        this->flatPoints.push_back(x);
+        this->flatPoints.push_back(y);
+        this->flatPoints.push_back(i);
+        this->placeNames.push_back(name);
 
-        // add input data to a flat vector
-        // could maybe do some memory alloc optimisation but not needed.
-        for (const auto& lineInfo1 : lineInfo3) {
-            flatData.push_back(lineInfo1);
-        }
+        ++i;
     }
-    return flatData;
 }
 
+// helper function to print a vector, not used anymore
 template<typename T>
 void printVector(std::vector<T> vec, std::ostream& os = std::cout) {
     for (const T& item : vec) {
@@ -71,80 +59,52 @@ void printVector(std::vector<T> vec, std::ostream& os = std::cout) {
     }
 }
 
-
-alglib::kdtree* buildKdTree(std::vector<double> &flatData) {
-
-    const double* dataAsArr = &flatData[0];
+// builds a 2d tree from the "flatPoints" array in the alglib backend
+void MostIsolatedFinder::buildKdTree(){
+    const double* dataAsArr = &(this->flatPoints[0]);
     alglib::real_2d_array arr;
-    arr.setcontent(flatData.size() / 3, 3, dataAsArr);
+    arr.setcontent(flatPoints.size() / 3, 3, dataAsArr);
 
     alglib::ae_int_t nx = 2, ny = 1, normtype = 2; // normtype 2 is euclidian 
-    // TODO use smart pointers here
-    alglib::kdtree *kdt = new alglib::kdtree;
-    alglib::kdtreebuild(arr, nx, ny, normtype, *kdt);
-    return kdt;
+    alglib::kdtreebuild(arr, nx, ny, normtype, this->kdt);
 }
 
-alglib::real_2d_array nearestNeighbourAgRaw(alglib::real_1d_array x, alglib::kdtree& kdt){
-    alglib::ae_int_t numResults = alglib::kdtreequeryknn(kdt, x, 2);
-    if (numResults != 2) {
-        throw std::runtime_error("alglib found multiple nearest neighbours");
-    }
-    alglib::real_2d_array results = "[[]]";
-    alglib::kdtreequeryresultsx(kdt, results);
-    return results;
-}
-
-std::vector<double> nearestNeighbourCpp(std::vector<double> point, alglib::kdtree& kdt){
-    alglib::real_1d_array pointAg;
-    pointAg.setcontent(2, &point[0]);
-
-    auto resultsRaw = nearestNeighbourAgRaw(pointAg, kdt);
-    std::vector<double> resultCpp(2);
-    resultCpp[0] = resultsRaw[1][0];
-    resultCpp[1] = resultsRaw[1][1];
-
-    return resultCpp;
-}
-
-double nearestDistance(alglib::real_1d_array x, alglib::kdtree& kdt){
+// find the distance to the nearest point in the kd tree not including the inputted point
+double MostIsolatedFinder::nearestDistanceAg(alglib::real_1d_array x, alglib::kdtree& kdt){
     
-    alglib::ae_int_t numResults = alglib::kdtreequeryknn(kdt, x, 2);
-    if (numResults != 2) {
+    alglib::ae_int_t numResults = alglib::kdtreequeryknn(kdt, x, 2); // 2 nearest because 1st is the original point
+    if (numResults > 2) {
         throw std::runtime_error("alglib found multiple nearest neighbours");
+    } else if (numResults < 2) {
+        throw std::runtime_error("not enough points in grid to look for neighbours");
     }
     alglib::real_1d_array results = "[]";
     alglib::kdtreequeryresultsdistances(kdt, results);
-    return results[1];
+    // could kdtreequeryresultsy for the indices saved in it but not needed here
+    return results[1]; //2nd element bc 1st is original point
 }
 
-double nearestDistance(std::vector<double> point, alglib::kdtree &kdt) {
+// find the distance to the nearest point in the kd tree (not self), 
+// after converting a tuple point to a alglib 1d_array point
+double MostIsolatedFinder::nearestDistance(std::tuple<double, double> point, alglib::kdtree &kdt) {
     alglib::real_1d_array pointAg;
-    pointAg.setcontent(2, &point[0]);
-    return nearestDistance(pointAg, kdt);
+    auto [x,y] = point;
+    double pointArr[] = {x, y};
+    pointAg.setcontent(2, pointArr);
+    return nearestDistanceAg(pointAg, kdt);
 }
 
-std::vector<double> allDistances(std::vector<double>& flatData) {
+// find the distance to the nearest neighbour for all points in the input vector ("flatPoints")
+std::vector<double> MostIsolatedFinder::findAllDistances() {
 
-    auto *kdt = buildKdTree(flatData);
-
-    std::vector<double> distances(flatData.size()/3);
-    for (size_t i = 0; i < flatData.size(); i += 3) {
-        std::vector<double> point(2);
-        point[0] = flatData[i];
-        point[1] = flatData[i+1];
-        double distance = nearestDistance(point, *kdt);
+    std::vector<double> distances(flatPoints.size()/3);
+    for (size_t i = 0; i < flatPoints.size(); i += 3) {
+        std::tuple<double, double> point = std::make_tuple(flatPoints[i], flatPoints[i+1]);
+        double distance = nearestDistance(point, this->kdt);
         distances[i/3] = distance;
     }
 
     return distances;
-}
-
-//find index of smallest element
-template<typename T>
-size_t argMin(std::vector<T> vec) {
-    auto minit = std::min_element(vec.begin(), vec.end());
-    return std::distance(vec.begin(), minit);
 }
 
 //find index of biggest element
@@ -154,21 +114,27 @@ size_t argMax(std::vector<T> vec) {
     return std::distance(vec.begin(), maxit);
 }
 
-std::string findMostIsolated(std::vector<double> flatData) {
-    std::vector<double> distances = allDistances(flatData);
+// find the most isolated point.
+// MostIsolatedFinder::init must be called first, probably crashes if this doesn't appen
+std::string MostIsolatedFinder::findMostIsolated() {
+    std::vector<double> distances = this->findAllDistances();
     size_t iMinDist = argMax<double>(distances);
-    //probs instead have an array of names rather than this hack
-    std::stringstream conv;
-    conv << "place" << static_cast<long>(flatData[iMinDist*3 + 2]); //casting to long to prevent the case of exp notation
-    return conv.str();
+    // indices are matched in the distances list and the places list
+    return placeNames[iMinDist];
+}
+
+// initialize the MostIsolatedFinder by reading and saving the input, and building a kd tree
+void MostIsolatedFinder::init(std::istream& is) {
+    readAllInput(is);
+    buildKdTree();
 }
 
 int main() {
-    std::string line;
-    std::vector<double> flatData = readPointsFlat();
-    // printVector(flatData);
 
-    std::string mostIsoPlace = findMostIsolated(flatData);
+    MostIsolatedFinder mif;
+    mif.init(std::cin);
+    std::string mostIsoPlace = mif.findMostIsolated();
+    
     std::cout << mostIsoPlace << std::endl;
     return 0;
 }
