@@ -17,7 +17,6 @@ class MostIsolatedFinder {
     std::tuple<double, double, std::string> parseLine(std::string line);
     double nearestDistanceAg(alglib::real_1d_array x, alglib::kdtree& kdt);
     
-
 public:
     void readAllInput(std::istream &is = std::cin);
     void buildKdTree();

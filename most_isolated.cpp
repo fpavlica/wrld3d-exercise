@@ -5,30 +5,19 @@
 #include <tuple>
 #include <algorithm>
 
-#include "alglib/stdafx.h"
 #include "alglib/alglibmisc.h"
 
 #include "most_isolated.h"
 
 
-// with the given data, all place names start with the word place followed by an int
-// therefore ignoring the "place" word and only using the ints for a simpler dataset
-long getPlaceNameInt(std::string placeName) {
-    placeName = placeName.substr(5); // 5 to end
-    std::stringstream nameS(placeName);
-    double placeInt = 0;
-    if (!(nameS >> placeInt)){
-        throw std::runtime_error("unexpected place name");
-    }
-    return placeInt;
-}
-
-// returns line info in a vector with [0] = x, [1] = y, [2] = placeNameInt
+// returns line info in a tuple with [0] = x, [1] = y, [2] = placeNameInt
 std::tuple<double, double, std::string> MostIsolatedFinder::parseLine(std::string line) {
     std::stringstream lineS(line);
 
     std::string name; 
     double x = 0, y = 0;
+    
+    //maybe would've been better to just do a "error parsing file" message instad
     if (!(lineS >> name)){
         throw std::runtime_error("error reading place name");
     }        
@@ -46,10 +35,10 @@ std::tuple<double, double, std::string> MostIsolatedFinder::parseLine(std::strin
     return make_tuple(x,y, name);
 }
 
+// reads all input and parses it into a list of place names and a falttened list of coordinates
 void MostIsolatedFinder::readAllInput(std::istream &is) {
     std::string line;
-    std::vector<std::string> nameList;
-    double i = 0;
+    double i = 0; // double because that's what it is in the vector
     while (getline(is, line)) {
 
         auto [x, y, name] = parseLine(line);
@@ -62,6 +51,7 @@ void MostIsolatedFinder::readAllInput(std::istream &is) {
     }
 }
 
+// helper function to print a vector, not used anymore
 template<typename T>
 void printVector(std::vector<T> vec, std::ostream& os = std::cout) {
     for (const T& item : vec) {
@@ -69,6 +59,7 @@ void printVector(std::vector<T> vec, std::ostream& os = std::cout) {
     }
 }
 
+// builds a 2d tree from the "flatPoints" array in the alglib backend
 void MostIsolatedFinder::buildKdTree(){
     const double* dataAsArr = &(this->flatPoints[0]);
     alglib::real_2d_array arr;
@@ -78,9 +69,10 @@ void MostIsolatedFinder::buildKdTree(){
     alglib::kdtreebuild(arr, nx, ny, normtype, this->kdt);
 }
 
+// find the distance to the nearest point in the kd tree not including the inputted point
 double MostIsolatedFinder::nearestDistanceAg(alglib::real_1d_array x, alglib::kdtree& kdt){
     
-    alglib::ae_int_t numResults = alglib::kdtreequeryknn(kdt, x, 2);
+    alglib::ae_int_t numResults = alglib::kdtreequeryknn(kdt, x, 2); // 2 nearest because 1st is the original point
     if (numResults > 2) {
         throw std::runtime_error("alglib found multiple nearest neighbours");
     } else if (numResults < 2) {
@@ -88,19 +80,21 @@ double MostIsolatedFinder::nearestDistanceAg(alglib::real_1d_array x, alglib::kd
     }
     alglib::real_1d_array results = "[]";
     alglib::kdtreequeryresultsdistances(kdt, results);
-    // if I wanted to bind this with the index in the kdt, kdtreequeryresultsy but no need
-    return results[1];
+    // could kdtreequeryresultsy for the indices saved in it but not needed here
+    return results[1]; //2nd element bc 1st is original point
 }
 
+// find the distance to the nearest point in the kd tree (not self), 
+// after converting a tuple point to a alglib 1d_array point
 double MostIsolatedFinder::nearestDistance(std::tuple<double, double> point, alglib::kdtree &kdt) {
     alglib::real_1d_array pointAg;
-    double x,y;
-    std::tie(x,y) = point;
+    auto [x,y] = point;
     double pointArr[] = {x, y};
     pointAg.setcontent(2, pointArr);
     return nearestDistanceAg(pointAg, kdt);
 }
 
+// find the distance to the nearest neighbour for all points in the input vector ("flatPoints")
 std::vector<double> MostIsolatedFinder::findAllDistances() {
 
     std::vector<double> distances(flatPoints.size()/3);
@@ -120,6 +114,8 @@ size_t argMax(std::vector<T> vec) {
     return std::distance(vec.begin(), maxit);
 }
 
+// find the most isolated point.
+// MostIsolatedFinder::init must be called first, probably crashes if this doesn't appen
 std::string MostIsolatedFinder::findMostIsolated() {
     std::vector<double> distances = this->findAllDistances();
     size_t iMinDist = argMax<double>(distances);
@@ -127,6 +123,7 @@ std::string MostIsolatedFinder::findMostIsolated() {
     return placeNames[iMinDist];
 }
 
+// initialize the MostIsolatedFinder by reading and saving the input, and building a kd tree
 void MostIsolatedFinder::init(std::istream& is) {
     readAllInput(is);
     buildKdTree();
@@ -136,9 +133,8 @@ int main() {
 
     MostIsolatedFinder mif;
     mif.init(std::cin);
-
     std::string mostIsoPlace = mif.findMostIsolated();
+    
     std::cout << mostIsoPlace << std::endl;
-
     return 0;
 }
